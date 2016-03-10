@@ -2,6 +2,7 @@ require "contenttools/rails/version"
 
 module Contenttools
   module Rails
-    # Your code goes here...
+    class Engine < ::Rails::Engine
+    end
   end
 end
