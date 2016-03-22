@@ -36,7 +36,7 @@ This gem follows the master branch in the ContentTools repository. Periodic upda
 
 Version numbering for this gem will follow the date of the last commit to master (YYYY.MM.DD).
 
-Current Version: [2016.03.05](https://github.com/GetmeUK/ContentTools/tree/e40f6739032f4ff358e1fb205f485680078efdb6)
+Current Version: [2016.03.20](https://github.com/GetmeUK/ContentTools/tree/983a6f8f8757a091e16a94d9a7bbc54c1afe22ac)
 
 
 ## Contributing
