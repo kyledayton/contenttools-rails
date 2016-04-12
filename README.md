@@ -32,11 +32,7 @@ Add the following directive to your Stylesheets manifest file (application.css):
 
 ## Versioning
 
-This gem follows the master branch in the ContentTools repository. Periodic updates will be made to mirror the currently shipped version of ContentTools, but it will be difficult to follow directly since there are no released versions of ContentTools.
-
-Version numbering for this gem will follow the date of the last commit to master (YYYY.MM.DD).
-
-Current Version: [2016.03.20](https://github.com/GetmeUK/ContentTools/tree/983a6f8f8757a091e16a94d9a7bbc54c1afe22ac)
+Versioning follows the core releases of ContentTools.
 
 
 ## Contributing
