@@ -1,5 +1,5 @@
 module Contenttools
   module Rails
-    VERSION = "2016.03.20"
+    VERSION = "1.2.2"
   end
 end

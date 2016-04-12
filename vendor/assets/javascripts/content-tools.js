@@ -1609,6 +1609,10 @@
     __bind = function(fn, me){ return function(){ return fn.apply(me, arguments); }; };
 
   window.ContentEdit = {
+    ALIGNMENT_CLASS_NAMES: {
+      'left': 'align-left',
+      'right': 'align-right'
+    },
     DEFAULT_MAX_ELEMENT_WIDTH: 800,
     DEFAULT_MIN_ELEMENT_WIDTH: 80,
     DRAG_HOLD_DURATION: 500,
@@ -2081,6 +2085,14 @@
       this._tagName = tagName.toLowerCase();
       this._attributes = attributes ? attributes : {};
       this._domElement = null;
+      this._behaviours = {
+        drag: true,
+        drop: true,
+        merge: true,
+        remove: true,
+        resize: true,
+        spawn: true
+      };
     }
 
     Element.prototype.attributes = function() {
@@ -2157,6 +2169,13 @@
       }
     };
 
+    Element.prototype.can = function(behaviour, allowed) {
+      if (allowed === void 0) {
+        return this._behaviours[behaviour];
+      }
+      return this._behaviours[behaviour] = allowed;
+    };
+
     Element.prototype.createDraggingDOMElement = function() {
       var helper;
       if (!this.isMounted()) {
@@ -2170,7 +2189,7 @@
 
     Element.prototype.drag = function(x, y) {
       var root;
-      if (!this.isMounted()) {
+      if (!(this.isMounted() && this.can('drag'))) {
         return;
       }
       root = ContentEdit.Root.get();
@@ -2180,6 +2199,9 @@
 
     Element.prototype.drop = function(element, placement) {
       var root;
+      if (!this.can('drop')) {
+        return;
+      }
       root = ContentEdit.Root.get();
       if (element) {
         element._removeCSSClass('ce-element--drop');
@@ -2236,6 +2258,9 @@
     };
 
     Element.prototype.merge = function(element) {
+      if (!(this.can('merge') && this.can('remove'))) {
+        return false;
+      }
       if (this.constructor.mergers[element.type()]) {
         return this.constructor.mergers[element.type()](element, this);
       } else if (element.constructor.mergers[this.type()]) {
@@ -2453,10 +2478,14 @@
       if (root._dropTarget) {
         return;
       }
-      if (this.constructor.droppers[dragging.type()] || dragging.constructor.droppers[this.type()]) {
-        this._addCSSClass('ce-element--drop');
-        return root._dropTarget = this;
+      if (!this.can('drop')) {
+        return;
       }
+      if (!(this.constructor.droppers[dragging.type()] || dragging.constructor.droppers[this.type()])) {
+        return;
+      }
+      this._addCSSClass('ce-element--drop');
+      return root._dropTarget = this;
     };
 
     Element.prototype._removeDOMEventListeners = function() {};
@@ -2513,21 +2542,23 @@
     };
 
     Element._dropBoth = function(element, target, placement) {
-      var aClassNames, className, insertIndex, _i, _len, _ref;
+      var aClassNames, alignLeft, alignRight, className, insertIndex, _i, _len, _ref;
       element.parent().detach(element);
       insertIndex = target.parent().children.indexOf(target);
       if (placement[0] === 'below' && placement[1] === 'center') {
         insertIndex += 1;
       }
+      alignLeft = ContentEdit.ALIGNMENT_CLASS_NAMES['left'];
+      alignRight = ContentEdit.ALIGNMENT_CLASS_NAMES['right'];
       if (element.a) {
-        element._removeCSSClass('align-left');
-        element._removeCSSClass('align-right');
+        element._removeCSSClass(alignLeft);
+        element._removeCSSClass(alignRight);
         if (element.a['class']) {
           aClassNames = [];
           _ref = element.a['class'].split(' ');
           for (_i = 0, _len = _ref.length; _i < _len; _i++) {
             className = _ref[_i];
-            if (className === 'align-left' || className === 'align-right') {
+            if (className === alignLeft || className === alignRight) {
               continue;
             }
             aClassNames.push(className);
@@ -2539,31 +2570,31 @@
           }
         }
       } else {
-        element.removeCSSClass('align-left');
-        element.removeCSSClass('align-right');
+        element.removeCSSClass(alignLeft);
+        element.removeCSSClass(alignRight);
       }
       if (placement[1] === 'left') {
         if (element.a) {
           if (element.a['class']) {
-            element.a['class'] += ' align-left';
+            element.a['class'] += ' ' + alignLeft;
           } else {
-            element.a['class'] = 'align-left';
+            element.a['class'] = alignLeft;
           }
-          element._addCSSClass('align-left');
+          element._addCSSClass(alignLeft);
         } else {
-          element.addCSSClass('align-left');
+          element.addCSSClass(alignLeft);
         }
       }
       if (placement[1] === 'right') {
         if (element.a) {
           if (element.a['class']) {
-            element.a['class'] += ' align-right';
+            element.a['class'] += ' ' + alignRight;
           } else {
-            element.a['class'] = 'align-right';
+            element.a['class'] = alignRight;
           }
-          element._addCSSClass('align-right');
+          element._addCSSClass(alignRight);
         } else {
-          element.addCSSClass('align-right');
+          element.addCSSClass(alignRight);
         }
       }
       return target.parent().attach(element, insertIndex);
@@ -2713,7 +2744,7 @@
     };
 
     ResizableElement.prototype.resize = function(corner, x, y) {
-      if (!this.isMounted()) {
+      if (!(this.isMounted() && this.can('resize'))) {
         return;
       }
       return ContentEdit.Root.get().startResizing(this, corner, x, y, true);
@@ -2762,6 +2793,9 @@
     ResizableElement.prototype._onMouseMove = function(ev) {
       var corner;
       ResizableElement.__super__._onMouseMove.call(this);
+      if (!this.can('resize')) {
+        return;
+      }
       this._removeCSSClass('ce-element--resize-top-left');
       this._removeCSSClass('ce-element--resize-top-right');
       this._removeCSSClass('ce-element--resize-bottom-left');
@@ -3206,7 +3240,7 @@
       if (this.isMounted()) {
         this._syncContent();
       }
-      if (this.content.isWhitespace()) {
+      if (this.content.isWhitespace() && this.can('remove')) {
         if (this.parent()) {
           this.parent().detach(this);
         }
@@ -3459,6 +3493,9 @@
         selection.select(this.domElement());
         return;
       }
+      if (!this.can('spawn')) {
+        return;
+      }
       this.content = tip.trim();
       this.updateInnerHTML();
       element = new this.constructor('p', {}, tail.trim());
@@ -3597,6 +3634,7 @@
         content.optimize();
         this._lastCached = Date.now();
         this._cached = content.html();
+        this._cached = this._cached.replace(/\u200B\Z/g, '');
       }
       return ("" + indent + "<" + this._tagName + (this._attributesToString()) + ">") + ("" + this._cached + "</" + this._tagName + ">");
     };
@@ -3604,7 +3642,7 @@
     PreText.prototype.updateInnerHTML = function() {
       var html;
       html = this.content.html();
-      html += '\n';
+      html += '\u200B';
       this._domElement.innerHTML = html;
       ContentSelect.Range.prepareElement(this._domElement);
       return this._flagIfEmpty();
@@ -3613,7 +3651,7 @@
     PreText.prototype._onKeyUp = function(ev) {
       var html, newSnaphot, snapshot;
       snapshot = this.content.html();
-      html = this._domElement.innerHTML.replace(/[\n]$/, '');
+      html = this._domElement.innerHTML;
       this.content = new HTMLString.String(html, this.content.preserveWhitespace());
       newSnaphot = this.content.html();
       if (snapshot !== newSnaphot) {
@@ -4001,6 +4039,7 @@
 
     function ListItem(attributes) {
       ListItem.__super__.constructor.call(this, 'li', attributes);
+      this._behaviours['indent'] = true;
     }
 
     ListItem.prototype.cssTypeName = function() {
@@ -4043,6 +4082,9 @@
 
     ListItem.prototype.indent = function() {
       var sibling;
+      if (!this.can('indent')) {
+        return;
+      }
       if (this.parent().children.indexOf(this) === 0) {
         return;
       }
@@ -4075,6 +4117,9 @@
 
     ListItem.prototype.unindent = function() {
       var child, grandParent, i, itemIndex, list, parent, parentIndex, selection, sibling, siblings, text, _i, _j, _k, _l, _len, _len1, _len2, _len3, _ref, _ref1;
+      if (!this.can('indent')) {
+        return;
+      }
       parent = this.parent();
       grandParent = parent.parent();
       siblings = parent.children.slice(parent.children.indexOf(this) + 1, parent.children.length);
@@ -4222,13 +4267,20 @@
     };
 
     ListItemText.prototype.blur = function() {
-      if (this.content.isWhitespace()) {
+      if (this.content.isWhitespace() && this.can('remove')) {
         this.parent().remove();
       } else if (this.isMounted()) {
         this._domElement.blur();
         this._domElement.removeAttribute('contenteditable');
       }
       return ContentEdit.Element.prototype.blur.call(this);
+    };
+
+    ListItemText.prototype.can = function(behaviour, allowed) {
+      if (allowed) {
+        throw new Error('Cannot set behaviour for ListItemText');
+      }
+      return this.parent().can(behaviour);
     };
 
     ListItemText.prototype.html = function(indent) {
@@ -4295,6 +4347,9 @@
       ev.preventDefault();
       if (this.content.isWhitespace()) {
         this.parent().unindent();
+        return;
+      }
+      if (!this.can('spawn')) {
         return;
       }
       ContentSelect.Range.query(this._domElement);
@@ -4793,6 +4848,13 @@
       return ContentEdit.Element.prototype.blur.call(this);
     };
 
+    TableCellText.prototype.can = function(behaviour, allowed) {
+      if (allowed) {
+        throw new Error('Cannot set behaviour for ListItemText');
+      }
+      return this.parent().can(behaviour);
+    };
+
     TableCellText.prototype.html = function(indent) {
       var content;
       if (indent == null) {
@@ -4837,33 +4899,35 @@
       ev.preventDefault();
       cell = this.parent();
       row = cell.parent();
+      if (!(row.isEmpty() && row.can('remove'))) {
+        return;
+      }
       if (this.content.length() === 0 && row.children.indexOf(cell) === 0) {
-        if (row.isEmpty()) {
-          previous = this.previousContent();
-          if (previous) {
-            previous.focus();
-            selection = new ContentSelect.Range(previous.content.length(), previous.content.length());
-            selection.select(previous.domElement());
-          }
-          return row.parent().detach(row);
+        previous = this.previousContent();
+        if (previous) {
+          previous.focus();
+          selection = new ContentSelect.Range(previous.content.length(), previous.content.length());
+          selection.select(previous.domElement());
         }
+        return row.parent().detach(row);
       }
     };
 
     TableCellText.prototype._keyDelete = function(ev) {
       var lastChild, nextElement, row, selection;
       row = this.parent().parent();
-      if (row.isEmpty()) {
-        ev.preventDefault();
-        lastChild = row.children[row.children.length - 1];
-        nextElement = lastChild.tableCellText().nextContent();
-        if (nextElement) {
-          nextElement.focus();
-          selection = new ContentSelect.Range(0, 0);
-          selection.select(nextElement.domElement());
-        }
-        return row.parent().detach(row);
+      if (!(row.isEmpty() && row.can('remove'))) {
+        return;
       }
+      ev.preventDefault();
+      lastChild = row.children[row.children.length - 1];
+      nextElement = lastChild.tableCellText().nextContent();
+      if (nextElement) {
+        nextElement.focus();
+        selection = new ContentSelect.Range(0, 0);
+        selection.select(nextElement.domElement());
+      }
+      return row.parent().detach(row);
     };
 
     TableCellText.prototype._keyDown = function(ev) {
@@ -4913,6 +4977,9 @@
         }
         return this.previousContent().focus();
       } else {
+        if (!this.can('spawn')) {
+          return;
+        }
         grandParent = cell.parent().parent();
         if (grandParent.tagName() === 'tbody' && this._isLastInSection()) {
           row = new ContentEdit.TableRow();
@@ -4972,7 +5039,6 @@
   })(ContentEdit.Text);
 
 }).call(this);
-
 (function() {
   var AttributeUI, CropMarksUI, StyleUI, _EditorApp,
     __hasProp = {}.hasOwnProperty,
@@ -5753,17 +5819,8 @@
       return ToolboxUI.__super__.hide.call(this);
     };
 
-    ToolboxUI.prototype.tools = function(tools) {
-      if (tools === void 0) {
-        return this._tools;
-      }
-      this._tools = tools;
-      this.unmount();
-      return this.mount();
-    };
-
     ToolboxUI.prototype.mount = function() {
-      var coord, domToolGroup, i, position, restore, tool, toolGroup, toolName, _i, _j, _len, _len1, _ref;
+      var coord, position, restore;
       this._domElement = this.constructor.createDiv(['ct-widget', 'ct-toolbox']);
       this.parent().domElement().appendChild(this._domElement);
       this._domGrip = this.constructor.createDiv(['ct-toolbox__grip', 'ct-grip']);
@@ -5771,32 +5828,17 @@
       this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
       this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
       this._domGrip.appendChild(this.constructor.createDiv(['ct-grip__bump']));
-      _ref = this._tools;
-      for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
-        toolGroup = _ref[i];
-        domToolGroup = this.constructor.createDiv(['ct-tool-group']);
-        this._domElement.appendChild(domToolGroup);
-        for (_j = 0, _len1 = toolGroup.length; _j < _len1; _j++) {
-          toolName = toolGroup[_j];
-          tool = ContentTools.ToolShelf.fetch(toolName);
-          this._toolUIs[toolName] = new ContentTools.ToolUI(tool);
-          this._toolUIs[toolName].mount(domToolGroup);
-          this._toolUIs[toolName].disabled(true);
-          this._toolUIs[toolName].addEventListener('applied', (function(_this) {
-            return function() {
-              return _this.updateTools();
-            };
-          })(this));
-        }
-      }
+      this._domToolGroups = this.constructor.createDiv(['ct-tool-groups']);
+      this._domElement.appendChild(this._domToolGroups);
+      this.tools(this._tools);
       restore = window.localStorage.getItem('ct-toolbox-position');
       if (restore && /^\d+,\d+$/.test(restore)) {
         position = (function() {
-          var _k, _len2, _ref1, _results;
-          _ref1 = restore.split(',');
+          var _i, _len, _ref, _results;
+          _ref = restore.split(',');
           _results = [];
-          for (_k = 0, _len2 = _ref1.length; _k < _len2; _k++) {
-            coord = _ref1[_k];
+          for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+            coord = _ref[_i];
             _results.push(parseInt(coord));
           }
           return _results;
@@ -5806,6 +5848,51 @@
         this._contain();
       }
       return this._addDOMEventListeners();
+    };
+
+    ToolboxUI.prototype.tools = function(tools) {
+      var domToolGroup, i, tool, toolGroup, toolName, toolUI, _i, _len, _ref, _ref1, _results;
+      if (tools === void 0) {
+        return this._tools;
+      }
+      this._tools = tools;
+      if (!this.isMounted()) {
+        return;
+      }
+      _ref = this._toolUIs;
+      for (toolName in _ref) {
+        toolUI = _ref[toolName];
+        toolUI.unmount();
+      }
+      this._toolUIs = {};
+      while (this._domToolGroups.lastChild) {
+        this._domToolGroups.removeChild(this._domToolGroups.lastChild);
+      }
+      _ref1 = this._tools;
+      _results = [];
+      for (i = _i = 0, _len = _ref1.length; _i < _len; i = ++_i) {
+        toolGroup = _ref1[i];
+        domToolGroup = this.constructor.createDiv(['ct-tool-group']);
+        this._domToolGroups.appendChild(domToolGroup);
+        _results.push((function() {
+          var _j, _len1, _results1;
+          _results1 = [];
+          for (_j = 0, _len1 = toolGroup.length; _j < _len1; _j++) {
+            toolName = toolGroup[_j];
+            tool = ContentTools.ToolShelf.fetch(toolName);
+            this._toolUIs[toolName] = new ContentTools.ToolUI(tool);
+            this._toolUIs[toolName].mount(domToolGroup);
+            this._toolUIs[toolName].disabled(true);
+            _results1.push(this._toolUIs[toolName].addEventListener('applied', (function(_this) {
+              return function() {
+                return _this.updateTools();
+              };
+            })(this)));
+          }
+          return _results1;
+        }).call(this));
+      }
+      return _results;
     };
 
     ToolboxUI.prototype.updateTools = function() {
@@ -6986,11 +7073,13 @@
           return selectTab('attributes');
         };
       })(this));
-      this._domCodeTab.addEventListener('mousedown', (function(_this) {
-        return function() {
-          return selectTab('code');
-        };
-      })(this));
+      if (this._supportsCoding) {
+        this._domCodeTab.addEventListener('mousedown', (function(_this) {
+          return function() {
+            return selectTab('code');
+          };
+        })(this));
+      }
       this._domRemoveAttribute.addEventListener('mousedown', (function(_this) {
         return function(ev) {
           var index, last;
@@ -7822,7 +7911,7 @@
         return;
       }
       root = ContentEdit.Root.get();
-      if (root.lastModified() === this._rootLastModified) {
+      if (root.lastModified() === this._rootLastModified && passive) {
         this.dispatchEvent(this.createEvent('saved', {
           regions: {},
           passive: passive
@@ -7970,11 +8059,12 @@
     };
 
     _EditorApp.prototype._preventEmptyRegions = function() {
-      var child, hasEditableChildren, name, placeholder, region, _i, _len, _ref, _ref1, _results;
+      var child, hasEditableChildren, lastModified, name, placeholder, region, _i, _len, _ref, _ref1, _results;
       _ref = this._regions;
       _results = [];
       for (name in _ref) {
         region = _ref[name];
+        lastModified = region.lastModified();
         hasEditableChildren = false;
         _ref1 = region.children;
         for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
@@ -7989,7 +8079,7 @@
         }
         placeholder = new ContentEdit.Text('p', {}, '');
         region.attach(placeholder);
-        _results.push(region.commit());
+        _results.push(region._modified = lastModified);
       }
       return _results;
     };
@@ -8715,13 +8805,13 @@
     };
 
     AlignLeft.apply = function(element, selection, callback) {
-      var className, _i, _len, _ref, _ref1;
+      var alignmentClassNames, className, _i, _len, _ref;
       if ((_ref = element.type()) === 'ListItemText' || _ref === 'TableCellText') {
         element = element.parent();
       }
-      _ref1 = ['text-center', 'text-left', 'text-right'];
-      for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
-        className = _ref1[_i];
+      alignmentClassNames = [ContentTools.Tools.AlignLeft.className, ContentTools.Tools.AlignCenter.className, ContentTools.Tools.AlignRight.className];
+      for (_i = 0, _len = alignmentClassNames.length; _i < _len; _i++) {
+        className = alignmentClassNames[_i];
         if (element.hasCSSClass(className)) {
           element.removeCSSClass(className);
           if (className === this.className) {
