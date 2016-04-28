@@ -11,7 +11,7 @@ Gem::Specification.new do |spec|
 
   spec.summary       = "ContentTools is a beautiful & small content editor built in JavaScript. This gem allows for its easy inclusion into the rails asset pipeline."
   # spec.description   = %q{TODO: Write a longer description or delete this line.}
-  spec.homepage      = "https://github.com/kayzee/contenttools-rails"
+  spec.homepage      = "https://github.com/devbbq/contenttools-rails"
   spec.license       = "MIT"
 
   # # Prevent pushing this gem to RubyGems.org by setting 'allowed_push_host', or
