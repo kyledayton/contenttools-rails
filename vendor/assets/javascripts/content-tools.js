@@ -2114,6 +2114,10 @@
       return this._domElement;
     };
 
+    Element.prototype.isFixed = function() {
+      return this.parent() && this.parent().type() === 'Fixture';
+    };
+
     Element.prototype.isFocused = function() {
       return ContentEdit.Root.get().focused() === this;
     };
@@ -2171,7 +2175,7 @@
 
     Element.prototype.can = function(behaviour, allowed) {
       if (allowed === void 0) {
-        return this._behaviours[behaviour];
+        return (!this.isFixed()) && this._behaviours[behaviour];
       }
       return this._behaviours[behaviour] = allowed;
     };
@@ -2277,7 +2281,12 @@
       if (sibling) {
         this.parent().domElement().insertBefore(this._domElement, sibling.domElement());
       } else {
-        this.parent().domElement().appendChild(this._domElement);
+        if (this.isFixed()) {
+          this.parent().domElement().parentNode.replaceChild(this._domElement, this.parent().domElement());
+          this.parent()._domElement = this._domElement;
+        } else {
+          this.parent().domElement().appendChild(this._domElement);
+        }
       }
       this._addDOMEventListeners();
       this._addCSSClass('ce-element');
@@ -2341,6 +2350,9 @@
     };
 
     Element.prototype.unmount = function() {
+      if (this.isFixed()) {
+        return;
+      }
       this._removeDOMEventListeners();
       if (this._domElement.parentNode) {
         this._domElement.parentNode.removeChild(this._domElement);
@@ -2923,6 +2935,59 @@
     };
 
     return Region;
+
+  })(ContentEdit.NodeCollection);
+
+  ContentEdit.Fixture = (function(_super) {
+    __extends(Fixture, _super);
+
+    function Fixture(domElement) {
+      var cls, element, tagNames;
+      Fixture.__super__.constructor.call(this);
+      this._domElement = domElement;
+      tagNames = ContentEdit.TagNames.get();
+      if (this._domElement.getAttribute("data-ce-tag")) {
+        cls = tagNames.match(this._domElement.getAttribute("data-ce-tag"));
+      } else {
+        cls = tagNames.match(this._domElement.tagName);
+      }
+      element = cls.fromDOMElement(this._domElement);
+      this.children = [element];
+      element._parent = this;
+      element.mount();
+      ContentEdit.Root.get().trigger('ready', this);
+    }
+
+    Fixture.prototype.domElement = function() {
+      return this._domElement;
+    };
+
+    Fixture.prototype.isMounted = function() {
+      return true;
+    };
+
+    Fixture.prototype.type = function() {
+      return 'Fixture';
+    };
+
+    Fixture.prototype.html = function(indent) {
+      var c;
+      if (indent == null) {
+        indent = '';
+      }
+      return ((function() {
+        var _i, _len, _ref, _results;
+        _ref = this.children;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          c = _ref[_i];
+          _results.push(c.html(indent));
+        }
+        return _results;
+      }).call(this)).join('\n').trim();
+    };
+
+    return Fixture;
 
   })(ContentEdit.NodeCollection);
 
@@ -3539,12 +3604,7 @@
     };
 
     Text.prototype._atEnd = function(selection) {
-      var atEnd;
-      atEnd = selection.get()[0] === this.content.length();
-      if (selection.get()[0] === this.content.length() - 1 && this.content.characters[this.content.characters.length - 1].isTag('br')) {
-        atEnd = true;
-      }
-      return atEnd;
+      return selection.get()[0] >= this.content.length();
     };
 
     Text.prototype._flagIfEmpty = function() {
@@ -3624,6 +3684,13 @@
       return 'Preformatted';
     };
 
+    PreText.prototype.blur = function() {
+      if (this.isMounted()) {
+        this._domElement.innerHTML = this.content.html();
+      }
+      return PreText.__super__.blur.call(this);
+    };
+
     PreText.prototype.html = function(indent) {
       var content;
       if (indent == null) {
@@ -3634,7 +3701,6 @@
         content.optimize();
         this._lastCached = Date.now();
         this._cached = content.html();
-        this._cached = this._cached.replace(/\u200B\Z/g, '');
       }
       return ("" + indent + "<" + this._tagName + (this._attributesToString()) + ">") + ("" + this._cached + "</" + this._tagName + ">");
     };
@@ -3642,22 +3708,34 @@
     PreText.prototype.updateInnerHTML = function() {
       var html;
       html = this.content.html();
-      html += '\u200B';
       this._domElement.innerHTML = html;
+      this._ensureEndZWS();
       ContentSelect.Range.prepareElement(this._domElement);
       return this._flagIfEmpty();
     };
 
     PreText.prototype._onKeyUp = function(ev) {
       var html, newSnaphot, snapshot;
+      this._ensureEndZWS();
       snapshot = this.content.html();
       html = this._domElement.innerHTML;
+      html = html.replace(/\u200B$/g, '');
       this.content = new HTMLString.String(html, this.content.preserveWhitespace());
       newSnaphot = this.content.html();
       if (snapshot !== newSnaphot) {
         this.taint();
       }
       return this._flagIfEmpty();
+    };
+
+    PreText.prototype._keyBack = function(ev) {
+      var selection;
+      selection = ContentSelect.Range.query(this._domElement);
+      if (selection.get()[0] <= this.content.length()) {
+        return PreText.__super__._keyBack.call(this, ev);
+      }
+      selection.set(this.content.length(), this.content.length());
+      return selection.select(this._domElement);
     };
 
     PreText.prototype._keyReturn = function(ev) {
@@ -3681,6 +3759,18 @@
       selection.set(cursor, cursor);
       selection.select(this._domElement);
       return this.taint();
+    };
+
+    PreText.prototype._ensureEndZWS = function() {
+      if (!this._domElement.lastChild) {
+        return;
+      }
+      if (this._domElement.innerHTML[this._domElement.innerHTML.length - 1] === '\u200B') {
+        return;
+      }
+      this.storeState();
+      this._domElement.lastChild.textContent += '\u200B';
+      return this.restoreState();
     };
 
     PreText.droppers = {
@@ -3870,8 +3960,8 @@
       if (!src) {
         src = 'No video source set';
       }
-      if (src.length > ContentEdit.HELPER_CHAR_LIMIT) {
-        src = text.substr(0, ContentEdit.HELPER_CHAR_LIMIT);
+      if (src.length > 80) {
+        src = src.substr(0, 80) + '...';
       }
       return src;
     };
@@ -5039,6 +5129,7 @@
   })(ContentEdit.Text);
 
 }).call(this);
+
 (function() {
   var AttributeUI, CropMarksUI, StyleUI, _EditorApp,
     __hasProp = {}.hasOwnProperty,
@@ -5147,12 +5238,23 @@
         restricted = restricted.concat(ContentTools.RESTRICTED_ATTRIBUTES['*']);
       }
       return restricted;
+    },
+    getScrollPosition: function() {
+      var isCSS1Compat, supportsPageOffset;
+      supportsPageOffset = window.pageXOffset !== void 0;
+      isCSS1Compat = (document.compatMode || 4) === 4;
+      if (supportsPageOffset) {
+        return [window.pageXOffset, window.pageYOffset];
+      } else if (isCSS1Compat) {
+        return [document.documentElement.scrollLeft, document.documentElement.scrollTop];
+      } else {
+        return [document.body.scrollLeft, document.body.scrollTop];
+      }
     }
   };
 
   ContentTools.ComponentUI = (function() {
     function ComponentUI() {
-      this._eventBinderDOM = document.createElement('div');
       this._bindings = {};
       this._parent = null;
       this._children = [];
@@ -6898,7 +7000,7 @@
       this._domStyles = this.constructor.createDiv(['ct-properties-dialog__styles']);
       this._domStyles.setAttribute('data-ct-empty', ContentEdit._('No styles available for this tag'));
       this._domView.appendChild(this._domStyles);
-      _ref = ContentTools.StylePalette.styles(this.element.tagName());
+      _ref = ContentTools.StylePalette.styles(this.element);
       for (_i = 0, _len = _ref.length; _i < _len; _i++) {
         style = _ref[_i];
         styleUI = new StyleUI(style, this.element.hasCSSClass(style.cssClass()));
@@ -7573,6 +7675,7 @@
       this._ignition = null;
       this._inspector = null;
       this._toolbox = null;
+      this._emptyRegionsAllowed = false;
     }
 
     _EditorApp.prototype.ctrlDown = function() {
@@ -7686,17 +7789,25 @@
       this._inspector = new ContentTools.InspectorUI();
       this.attach(this._inspector);
       this._state = 'ready';
-      ContentEdit.Root.get().bind('detach', (function(_this) {
+      this._handleDetach = (function(_this) {
         return function(element) {
           return _this._preventEmptyRegions();
         };
-      })(this));
-      ContentEdit.Root.get().bind('paste', (function(_this) {
+      })(this);
+      this._handleClipboardPaste = (function(_this) {
         return function(element, ev) {
-          return _this.paste(element, ev.clipboardData);
+          var clipboardData;
+          clipboardData = null;
+          if (ev.clipboardData) {
+            clipboardData = ev.clipboardData.getData('text/plain');
+          }
+          if (window.clipboardData) {
+            clipboardData = window.clipboardData.getData('TEXT');
+          }
+          return _this.paste(element, clipboardData);
         };
-      })(this));
-      ContentEdit.Root.get().bind('next-region', (function(_this) {
+      })(this);
+      this._handleNextRegionTransition = (function(_this) {
         return function(region) {
           var child, element, index, regions, _i, _len, _ref;
           regions = _this.orderedRegions();
@@ -7721,8 +7832,8 @@
           }
           return ContentEdit.Root.get().trigger('next-region', region);
         };
-      })(this));
-      return ContentEdit.Root.get().bind('previous-region', (function(_this) {
+      })(this);
+      this._handlePreviousRegionTransition = (function(_this) {
         return function(region) {
           var child, descendants, element, index, length, regions, _i, _len;
           regions = _this.orderedRegions();
@@ -7749,10 +7860,18 @@
           }
           return ContentEdit.Root.get().trigger('previous-region', region);
         };
-      })(this));
+      })(this);
+      ContentEdit.Root.get().bind('detach', this._handleDetach);
+      ContentEdit.Root.get().bind('paste', this._handleClipboardPaste);
+      ContentEdit.Root.get().bind('next-region', this._handleNextRegionTransition);
+      return ContentEdit.Root.get().bind('previous-region', this._handlePreviousRegionTransition);
     };
 
     _EditorApp.prototype.destroy = function() {
+      ContentEdit.Root.get().unbind('detach', this._handleDetach);
+      ContentEdit.Root.get().unbind('paste', this._handleClipboardPaste);
+      ContentEdit.Root.get().unbind('next-region', this._handleNextRegionTransition);
+      ContentEdit.Root.get().unbind('previous-region', this._handlePreviousRegionTransition);
       return this.unmount();
     };
 
@@ -7779,7 +7898,7 @@
 
     _EditorApp.prototype.paste = function(element, clipboardData) {
       var character, content, cursor, encodeHTML, i, insertAt, insertIn, insertNode, item, itemText, lastItem, line, lineLength, lines, replaced, selection, tags, tail, tip, type, _i, _len;
-      content = clipboardData.getData('text/plain');
+      content = clipboardData;
       lines = content.split('\n');
       lines = lines.filter(function(line) {
         return line.trim() !== '';
@@ -7874,13 +7993,18 @@
     };
 
     _EditorApp.prototype.revertToSnapshot = function(snapshot, restoreEditable) {
-      var domRegion, i, name, region, _i, _len, _ref, _ref1;
+      var child, domRegion, i, name, region, _i, _j, _len, _len1, _ref, _ref1, _ref2;
       if (restoreEditable == null) {
         restoreEditable = true;
       }
       _ref = this._regions;
       for (name in _ref) {
         region = _ref[name];
+        _ref1 = region.children;
+        for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+          child = _ref1[_i];
+          child.unmount();
+        }
         region.domElement().innerHTML = snapshot.regions[name];
       }
       if (restoreEditable) {
@@ -7888,9 +8012,9 @@
           ContentEdit.Root.get().focused().blur();
         }
         this._regions = {};
-        _ref1 = this._domRegions;
-        for (i = _i = 0, _len = _ref1.length; _i < _len; i = ++_i) {
-          domRegion = _ref1[i];
+        _ref2 = this._domRegions;
+        for (i = _j = 0, _len1 = _ref2.length; _j < _len1; i = ++_j) {
+          domRegion = _ref2[i];
           name = domRegion.getAttribute(this._namingProp);
           if (!name) {
             name = i;
@@ -7904,7 +8028,7 @@
     };
 
     _EditorApp.prototype.save = function(passive) {
-      var child, html, modifiedRegions, name, region, root, _ref;
+      var child, html, modifiedRegions, name, region, root, _i, _len, _ref, _ref1;
       if (!this.dispatchEvent(this.createEvent('save', {
         passive: passive
       }))) {
@@ -7930,6 +8054,11 @@
           }
         }
         if (!passive) {
+          _ref1 = region.children;
+          for (_i = 0, _len = _ref1.length; _i < _len; _i++) {
+            child = _ref1[_i];
+            child.unmount();
+          }
           region.domElement().innerHTML = html;
         }
         if (region.lastModified() === this._regionsLastModified[name]) {
@@ -7995,15 +8124,19 @@
           return;
         }
       }
-      if (ContentEdit.Root.get().focused()) {
-        ContentEdit.Root.get().focused().blur();
-      }
       this.history.stopWatching();
       this.history = null;
       this._toolbox.hide();
       this._inspector.hide();
       this._regions = {};
       this._state = 'ready';
+      if (ContentEdit.Root.get().focused()) {
+        this._allowEmptyRegions((function(_this) {
+          return function() {
+            return ContentEdit.Root.get().focused().blur();
+          };
+        })(this));
+      }
     };
 
     _EditorApp.prototype._addDOMEventListeners = function() {
@@ -8058,8 +8191,17 @@
       })(this));
     };
 
+    _EditorApp.prototype._allowEmptyRegions = function(callback) {
+      this._emptyRegionsAllowed = true;
+      callback();
+      return this._emptyRegionsAllowed = false;
+    };
+
     _EditorApp.prototype._preventEmptyRegions = function() {
       var child, hasEditableChildren, lastModified, name, placeholder, region, _i, _len, _ref, _ref1, _results;
+      if (this._emptyRegionsAllowed) {
+        return;
+      }
       _ref = this._regions;
       _results = [];
       for (name in _ref) {
@@ -8272,8 +8414,10 @@
       return this._styles = this._styles.concat(styles);
     };
 
-    StylePalette.styles = function(tagName) {
-      if (tagName === void 0) {
+    StylePalette.styles = function(element) {
+      var tagName;
+      tagName = element.tagName();
+      if (element === void 0) {
         return this._styles.slice();
       }
       return this._styles.filter(function(style) {
@@ -8517,7 +8661,7 @@
     };
 
     Link.apply = function(element, selection, callback) {
-      var allowScrolling, app, applied, characters, dialog, domElement, ends, from, measureSpan, modal, rect, selectTag, starts, to, transparent, _ref;
+      var allowScrolling, app, applied, characters, dialog, domElement, ends, from, measureSpan, modal, rect, scrollX, scrollY, selectTag, starts, to, transparent, _ref, _ref1;
       applied = false;
       if (element.type() === 'Image') {
         rect = element.domElement().getBoundingClientRect();
@@ -8559,7 +8703,8 @@
         return callback(applied);
       });
       dialog = new ContentTools.LinkDialog(this.getAttr('href', element, selection), this.getAttr('target', element, selection));
-      dialog.position([rect.left + (rect.width / 2) + window.scrollX, rect.top + (rect.height / 2) + window.scrollY]);
+      _ref1 = ContentTools.getScrollPosition(), scrollX = _ref1[0], scrollY = _ref1[1];
+      dialog.position([rect.left + (rect.width / 2) + scrollX, rect.top + (rect.height / 2) + scrollY]);
       dialog.addEventListener('save', function(ev) {
         var a, alignmentClassNames, className, detail, linkClasses, _i, _j, _len, _len1;
         detail = ev.detail();
