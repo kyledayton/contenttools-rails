@@ -1,1 +1,2 @@
-//= link_tree .
+//= link ../icons.woff
+//= link_tree ../images
