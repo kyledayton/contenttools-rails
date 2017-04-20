@@ -1,5 +1,0 @@
-//= link 'drop-horz.svg'
-//= link 'drop-vert-above.svg'
-//= link 'drop-vert-below.svg'
-//= link 'video.svg'
-//= link 'icons.woff'
