@@ -3472,13 +3472,9 @@
         this._lastCached = Date.now();
         this._cached = content.html();
       }
-      if (this.isFixed()) {
-        return this._cached;
-      } else {
-        le = ContentEdit.LINE_ENDINGS;
-        attributes = this._attributesToString();
-        return ("" + indent + "<" + this._tagName + attributes + ">" + le) + ("" + indent + ContentEdit.INDENT + this._cached + le) + ("" + indent + "</" + this._tagName + ">");
-      }
+      le = ContentEdit.LINE_ENDINGS;
+      attributes = this._attributesToString();
+      return ("" + indent + "<" + this._tagName + attributes + ">" + le) + ("" + indent + ContentEdit.INDENT + this._cached + le) + ("" + indent + "</" + this._tagName + ">");
     };
 
     Text.prototype.mount = function() {
@@ -4104,7 +4100,7 @@
     Image.placements = ['above', 'below', 'left', 'right', 'center'];
 
     Image.fromDOMElement = function(domElement) {
-      var a, attributes, c, childNode, childNodes, _i, _len;
+      var a, attributes, c, childNode, childNodes, height, width, _i, _len;
       a = null;
       if (domElement.tagName.toLowerCase() === 'a') {
         a = this.getDOMElementAttributes(domElement);
@@ -4130,20 +4126,24 @@
         }
       }
       attributes = this.getDOMElementAttributes(domElement);
+      width = attributes['width'];
+      height = attributes['height'];
       if (attributes['width'] === void 0) {
         if (attributes['height'] === void 0) {
-          attributes['width'] = domElement.naturalWidth;
+          width = domElement.naturalWidth;
         } else {
-          attributes['width'] = domElement.clientWidth;
+          width = domElement.clientWidth;
         }
       }
       if (attributes['height'] === void 0) {
         if (attributes['width'] === void 0) {
-          attributes['height'] = domElement.naturalHeight;
+          height = domElement.naturalHeight;
         } else {
-          attributes['height'] = domElement.clientHeight;
+          height = domElement.clientHeight;
         }
       }
+      attributes['width'] = width;
+      attributes['height'] = height;
       return new this(attributes, a);
     };
 
@@ -4152,6 +4152,157 @@
   })(ContentEdit.ResizableElement);
 
   ContentEdit.TagNames.get().register(ContentEdit.Image, 'img');
+
+  ContentEdit.ImageFixture = (function(_super) {
+    __extends(ImageFixture, _super);
+
+    function ImageFixture(tagName, attributes, src) {
+      ImageFixture.__super__.constructor.call(this, tagName, attributes);
+      this._src = src;
+    }
+
+    ImageFixture.prototype.cssTypeName = function() {
+      return 'image-fixture';
+    };
+
+    ImageFixture.prototype.type = function() {
+      return 'ImageFixture';
+    };
+
+    ImageFixture.prototype.typeName = function() {
+      return 'ImageFixture';
+    };
+
+    ImageFixture.prototype.html = function(indent) {
+      var alt, attributes, img, le;
+      if (indent == null) {
+        indent = '';
+      }
+      le = ContentEdit.LINE_ENDINGS;
+      attributes = this._attributesToString();
+      alt = '';
+      if (this._attributes['alt'] !== void 0) {
+        alt = "alt=\"" + this._attributes['alt'] + "\"";
+      }
+      img = "" + indent + "<img src=\"" + (this.src()) + "\"" + alt + ">";
+      return ("" + indent + "<" + (this.tagName()) + " " + attributes + ">" + le) + ("" + ContentEdit.INDENT + img + le) + ("" + indent + "</" + (this.tagName()) + ">");
+    };
+
+    ImageFixture.prototype.mount = function() {
+      var classes, name, style, value, _ref;
+      this._domElement = document.createElement(this.tagName());
+      _ref = this._attributes;
+      for (name in _ref) {
+        value = _ref[name];
+        if (name === 'alt' || name === 'style') {
+          continue;
+        }
+        this._domElement.setAttribute(name, value);
+      }
+      classes = '';
+      if (this.a && this.a['class']) {
+        classes += ' ' + this.a['class'];
+      }
+      if (this._attributes['class']) {
+        classes += ' ' + this._attributes['class'];
+      }
+      this._domElement.setAttribute('class', classes);
+      style = this._attributes['style'] ? this._attributes['style'] : '';
+      style = style.replace(/background-image:.+?(;|$)/i, '');
+      style = [style.trim(), "background-image:url('" + (this.src()) + "');"].join(' ');
+      this._domElement.setAttribute('style', style.trim());
+      return ImageFixture.__super__.mount.call(this);
+    };
+
+    ImageFixture.prototype.src = function(src) {
+      if (src === void 0) {
+        return this._src;
+      }
+      this._src = src.toLowerCase();
+      if (this.isMounted()) {
+        this.unmount();
+        this.mount();
+      }
+      return this.taint();
+    };
+
+    ImageFixture.prototype.unmount = function() {
+      var domElement, wrapper;
+      if (this.isFixed()) {
+        wrapper = document.createElement('div');
+        wrapper.innerHTML = this.html();
+        domElement = wrapper.firstElementChild;
+        this._domElement.parentNode.replaceChild(domElement, this._domElement);
+        this._domElement = domElement;
+        return this.parent()._domElement = this._domElement;
+      } else {
+        return ImageFixture.__super__.unmount.call(this);
+      }
+    };
+
+    ImageFixture.prototype._attributesToString = function() {
+      var attributes, k, style, v, _ref;
+      if (this._attributes['style']) {
+        style = this._attributes['style'] ? this._attributes['style'] : '';
+        style = style.replace(/background-image:.+?(;|$)/i, '');
+        style = [style.trim(), "background-image:url('" + (this.src()) + "');"].join(' ');
+        this._attributes['style'] = style.trim();
+      } else {
+        this._attributes['style'] = "background-image:url('" + (this.src()) + "');";
+      }
+      attributes = {};
+      _ref = this._attributes;
+      for (k in _ref) {
+        v = _ref[k];
+        if (k === 'alt') {
+          continue;
+        }
+        attributes[k] = v;
+      }
+      return ' ' + ContentEdit.attributesToString(attributes);
+    };
+
+    ImageFixture.droppers = {
+      'ImageFixture': ContentEdit.Element._dropVert,
+      'Image': ContentEdit.Element._dropVert,
+      'PreText': ContentEdit.Element._dropVert,
+      'Text': ContentEdit.Element._dropVert
+    };
+
+    ImageFixture.fromDOMElement = function(domElement) {
+      var alt, attributes, c, childNode, childNodes, src, tagName, _i, _len;
+      tagName = domElement.tagName;
+      attributes = this.getDOMElementAttributes(domElement);
+      src = '';
+      alt = '';
+      childNodes = (function() {
+        var _i, _len, _ref, _results;
+        _ref = domElement.childNodes;
+        _results = [];
+        for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+          c = _ref[_i];
+          _results.push(c);
+        }
+        return _results;
+      })();
+      for (_i = 0, _len = childNodes.length; _i < _len; _i++) {
+        childNode = childNodes[_i];
+        if (childNode.nodeType === 1 && childNode.tagName.toLowerCase() === 'img') {
+          src = childNode.getAttribute('src') || '';
+          alt = childNode.getAttribute('alt') || '';
+          break;
+        }
+      }
+      attributes = this.getDOMElementAttributes(domElement);
+      attributes['alt'] = alt;
+      return new this(domElement.tagName, attributes, src);
+    };
+
+    return ImageFixture;
+
+  })(ContentEdit.Element);
+
+  ContentEdit.TagNames.get().register(ContentEdit.ImageFixture, 'img-fixture');
 
   ContentEdit.Video = (function(_super) {
     __extends(Video, _super);
@@ -4327,6 +4478,7 @@
 
     List.droppers = {
       'Image': ContentEdit.Element._dropBoth,
+      'ImageFixture': ContentEdit.Element._dropVert,
       'List': ContentEdit.Element._dropVert,
       'PreText': ContentEdit.Element._dropVert,
       'Static': ContentEdit.Element._dropVert,
@@ -4889,6 +5041,7 @@
 
     Table.droppers = {
       'Image': ContentEdit.Element._dropBoth,
+      'ImageFixture': ContentEdit.Element._dropVert,
       'List': ContentEdit.Element._dropVert,
       'PreText': ContentEdit.Element._dropVert,
       'Static': ContentEdit.Element._dropVert,
@@ -5558,7 +5711,7 @@
       return ContentEdit.addCSSClass(this._domElement, className);
     };
 
-    ComponentUI.prototype.detatch = function(component) {
+    ComponentUI.prototype.detach = function(component) {
       var componentIndex;
       componentIndex = this._children.indexOf(component);
       if (componentIndex === -1) {
@@ -5683,11 +5836,16 @@
       }
     };
 
-    WidgetUI.prototype.detatch = function(component) {
-      WidgetUI.__super__.detatch.call(this, component);
+    WidgetUI.prototype.detach = function(component) {
+      WidgetUI.__super__.detach.call(this, component);
       if (this.isMounted()) {
         return component.unmount();
       }
+    };
+
+    WidgetUI.prototype.detatch = function(component) {
+      console.log('Please call detach, detatch will be removed in release 1.4.x');
+      return this.detach(component);
     };
 
     WidgetUI.prototype.show = function() {
@@ -6036,9 +6194,6 @@
       for (_j = 0, _len1 = elements.length; _j < _len1; _j++) {
         element = elements[_j];
         if (ContentTools.INSPECTOR_IGNORED_ELEMENTS.indexOf(element.type()) !== -1) {
-          continue;
-        }
-        if (element.isFixed()) {
           continue;
         }
         tag = new ContentTools.TagUI(element);
@@ -6430,19 +6585,19 @@
           redo = false;
           undo = false;
           switch (os) {
-            case 'linux':
+            case 'linux' && !ev.altKey:
               if (ev.keyCode === 90 && ev.ctrlKey) {
                 redo = ev.shiftKey;
                 undo = !redo;
               }
               break;
-            case 'mac':
+            case 'mac' && !(ev.altKey || ev.ctrlKey):
               if (ev.keyCode === 90 && ev.metaKey) {
                 redo = ev.shiftKey;
                 undo = !redo;
               }
               break;
-            case 'windows':
+            case 'windows' && !ev.altKey || ev.shiftKey:
               if (ev.keyCode === 89 && ev.ctrlKey) {
                 redo = true;
               }
@@ -6686,17 +6841,21 @@
     };
 
     AnchoredDialogUI.prototype._contain = function() {
-      var halfWidth, pageWidth;
+      var halfWidth, pageWidth, rect;
       if (!this.isMounted()) {
         return;
       }
-      halfWidth = this._domElement.getBoundingClientRect().width / 2 + 5;
+      rect = this._domElement.getBoundingClientRect();
+      halfWidth = rect.width / 2 + 5;
       pageWidth = document.documentElement.clientWidth || document.body.clientWidth;
-      if ((this._position[0] + halfWidth) > (pageWidth - halfWidth)) {
+      if ((this._position[0] + halfWidth) > pageWidth) {
         this._position[0] = pageWidth - halfWidth;
       }
       if (this._position[0] < halfWidth) {
-        return this._position[0] = halfWidth;
+        this._position[0] = halfWidth;
+      }
+      if (this._position[1] + rect.top < 5) {
+        return this._position[1] = Math.abs(rect.top) + 5;
       }
     };
 
@@ -6873,8 +7032,14 @@
       domTools.appendChild(domProgressBar);
       this._domProgress = this.constructor.createDiv(['ct-progress-bar__progress']);
       domProgressBar.appendChild(this._domProgress);
-      domActions = this.constructor.createDiv(['ct-control-group', 'ct-control-group--right']);
+      domActions = this.constructor.createDiv(['ct-control-group']);
       this._domControls.appendChild(domActions);
+      this._domURLInput = document.createElement('input');
+      this._domURLInput.setAttribute('class', 'ct-image-dialog__input');
+      this._domURLInput.setAttribute('name', 'url');
+      this._domURLInput.setAttribute('placeholder', ContentEdit._('Paste Image URL') + '...');
+      this._domURLInput.setAttribute('type', 'text');
+      domActions.appendChild(this._domURLInput);
       this._domUpload = this.constructor.createDiv(['ct-control', 'ct-control--text', 'ct-control--upload']);
       this._domUpload.textContent = ContentEdit._('Upload');
       domActions.appendChild(this._domUpload);
@@ -6928,6 +7093,17 @@
       return ContentEdit.removeCSSClass(this._domCrop, 'ct-control--active');
     };
 
+    ImageDialog.prototype.loadAndSave = function(imageURL) {
+      var img;
+      img = new Image();
+      img.onload = (function(_this) {
+        return function() {
+          return _this.save(imageURL, [img.width, img.height], null);
+        };
+      })(this);
+      return img.src = imageURL;
+    };
+
     ImageDialog.prototype.save = function(imageURL, imageSize, imageAttrs) {
       return this.dispatchEvent(this.createEvent('save', {
         'imageURL': imageURL,
@@ -6958,6 +7134,7 @@
       this._domCancelUpload = null;
       this._domClear = null;
       this._domCrop = null;
+      this._domURLInput = null;
       this._domInput = null;
       this._domInsert = null;
       this._domProgress = null;
@@ -6973,6 +7150,9 @@
         return function(ev) {
           var file;
           file = ev.target.files[0];
+          if (!file) {
+            return;
+          }
           ev.target.value = '';
           if (ev.target.value) {
             ev.target.type = 'text';
@@ -7015,9 +7195,23 @@
           }
         };
       })(this));
-      return this._domInsert.addEventListener('click', (function(_this) {
+      this._domInsert.addEventListener('click', (function(_this) {
         return function(ev) {
-          return _this.dispatchEvent(_this.createEvent('imageuploader.save'));
+          if (_this.state() === 'inserting') {
+            return _this.loadAndSave(_this._imageURL);
+          } else {
+            return _this.dispatchEvent(_this.createEvent('imageuploader.save'));
+          }
+        };
+      })(this));
+      return this._domURLInput.addEventListener('input', (function(_this) {
+        return function(ev) {
+          _this._imageURL = ev.target.value;
+          if (ev.target.value !== '') {
+            return _this.state('inserting');
+          } else {
+            return _this.state('empty');
+          }
         };
       })(this));
     };
@@ -8251,7 +8445,9 @@
       ContentEdit.Root.get().unbind('paste', this._handleClipboardPaste);
       ContentEdit.Root.get().unbind('next-region', this._handleNextRegionTransition);
       ContentEdit.Root.get().unbind('previous-region', this._handlePreviousRegionTransition);
-      return this.unmount();
+      this.removeEventListener();
+      this.unmount();
+      return this._children = [];
     };
 
     _EditorApp.prototype.highlightRegions = function(highlight) {
@@ -8357,8 +8553,14 @@
     };
 
     _EditorApp.prototype.unmount = function() {
+      var child, _i, _len, _ref;
       if (!this.isMounted()) {
         return;
+      }
+      _ref = this._children;
+      for (_i = 0, _len = _ref.length; _i < _len; _i++) {
+        child = _ref[_i];
+        child.unmount();
       }
       this._domElement.parentNode.removeChild(this._domElement);
       this._domElement = null;
@@ -8373,19 +8575,22 @@
       if (!this.dispatchEvent(this.createEvent('revert'))) {
         return;
       }
-      confirmMessage = ContentEdit._('Your changes have not been saved, do you really want to lose them?');
-      if (ContentEdit.Root.get().lastModified() > this._rootLastModified && !window.confirm(confirmMessage)) {
-        return false;
+      if (ContentTools.CANCEL_MESSAGE) {
+        confirmMessage = ContentEdit._(ContentTools.CANCEL_MESSAGE);
+        if (ContentEdit.Root.get().lastModified() > this._rootLastModified && !window.confirm(confirmMessage)) {
+          return false;
+        }
       }
       this.revertToSnapshot(this.history.goTo(0), false);
       return true;
     };
 
     _EditorApp.prototype.revertToSnapshot = function(snapshot, restoreEditable) {
-      var child, name, region, _i, _len, _ref, _ref1, _ref2;
+      var child, domRegions, name, region, wrapper, _i, _len, _ref, _ref1, _ref2;
       if (restoreEditable == null) {
         restoreEditable = true;
       }
+      domRegions = [];
       _ref = this._regions;
       for (name in _ref) {
         region = _ref[name];
@@ -8394,8 +8599,17 @@
           child = _ref1[_i];
           child.unmount();
         }
-        region.domElement().innerHTML = snapshot.regions[name];
+        if (region.children.length === 1 && region.children[0].isFixed()) {
+          wrapper = this.constructor.createDiv();
+          wrapper.innerHTML = snapshot.regions[name];
+          domRegions.push(wrapper.firstElementChild);
+          region.domElement().parentNode.replaceChild(wrapper.firstElementChild, region.domElement());
+        } else {
+          domRegions.push(region.domElement());
+          region.domElement().innerHTML = snapshot.regions[name];
+        }
       }
+      this._domRegions = domRegions;
       if (restoreEditable) {
         if (ContentEdit.Root.get().focused()) {
           ContentEdit.Root.get().focused().blur();
@@ -8417,13 +8631,16 @@
     };
 
     _EditorApp.prototype.save = function(passive) {
-      var child, html, modifiedRegions, name, region, root, _i, _len, _ref, _ref1;
+      var child, domRegions, html, modifiedRegions, name, region, root, wrapper, _i, _len, _ref, _ref1;
       if (!this.dispatchEvent(this.createEvent('save', {
         passive: passive
       }))) {
         return;
       }
       root = ContentEdit.Root.get();
+      if (root.focused()) {
+        root.focused().blur();
+      }
       if (root.lastModified() === this._rootLastModified && passive) {
         this.dispatchEvent(this.createEvent('saved', {
           regions: {},
@@ -8431,12 +8648,13 @@
         }));
         return;
       }
+      domRegions = [];
       modifiedRegions = {};
       _ref = this._regions;
       for (name in _ref) {
         region = _ref[name];
         html = region.html();
-        if (region.children.length === 1) {
+        if (region.children.length === 1 && !region.type() === 'Fixture') {
           child = region.children[0];
           if (child.content && !child.content.html()) {
             html = '';
@@ -8448,7 +8666,15 @@
             child = _ref1[_i];
             child.unmount();
           }
-          region.domElement().innerHTML = html;
+          if (region.children.length === 1 && region.children[0].isFixed()) {
+            wrapper = this.constructor.createDiv();
+            wrapper.innerHTML = html;
+            domRegions.push(wrapper.firstElementChild);
+            region.domElement().parentNode.replaceChild(wrapper.firstElementChild, region.domElement());
+          } else {
+            domRegions.push(region.domElement());
+            region.domElement().innerHTML = html;
+          }
         }
         if (region.lastModified() === this._regionsLastModified[name]) {
           continue;
@@ -8456,6 +8682,7 @@
         modifiedRegions[name] = html;
         this._regionsLastModified[name] = region.lastModified();
       }
+      this._domRegions = domRegions;
       return this.dispatchEvent(this.createEvent('saved', {
         regions: modifiedRegions,
         passive: passive
@@ -8480,7 +8707,8 @@
       this._state = 'editing';
       this._toolbox.show();
       this._inspector.show();
-      return this.busy(false);
+      this.busy(false);
+      return this.dispatchEvent(this.createEvent('started'));
     };
 
     _EditorApp.prototype.stop = function(save) {
@@ -8514,6 +8742,7 @@
           };
         })(this));
       }
+      return this.dispatchEvent(this.createEvent('stopped'));
     };
 
     _EditorApp.prototype.syncRegions = function(regionQuery, restoring) {
@@ -8593,7 +8822,7 @@
       this._handleBeforeUnload = (function(_this) {
         return function(ev) {
           var cancelMessage;
-          if (_this._state === 'editing') {
+          if (_this._state === 'editing' && ContentTools.CANCEL_MESSAGE) {
             cancelMessage = ContentEdit._(ContentTools.CANCEL_MESSAGE);
             (ev || window.event).returnValue = cancelMessage;
             return cancelMessage;
@@ -8652,11 +8881,12 @@
     };
 
     _EditorApp.prototype._initRegions = function(restoring) {
-      var domRegion, found, i, index, name, region, _i, _len, _ref, _ref1, _results;
+      var domRegion, domRegions, found, i, index, name, region, _i, _len, _ref, _ref1, _results;
       if (restoring == null) {
         restoring = false;
       }
       found = {};
+      domRegions = [];
       this._orderedRegions = [];
       _ref = this._domRegions;
       for (i = _i = 0, _len = _ref.length; _i < _len; i = ++_i) {
@@ -8675,10 +8905,12 @@
         } else {
           this._regions[name] = new ContentEdit.Region(domRegion);
         }
+        domRegions.push(this._regions[name].domElement());
         if (!restoring) {
           this._regionsLastModified[name] = this._regions[name].lastModified();
         }
       }
+      this._domRegions = domRegions;
       _ref1 = this._regions;
       _results = [];
       for (name in _ref1) {
@@ -9097,6 +9329,8 @@
         if (element.a) {
           return element.a[attrName];
         }
+      } else if (element.isFixed() && element.tagName() === 'a') {
+        return element.attr(attrName);
       } else {
         _ref = selection.get(), from = _ref[0], to = _ref[1];
         selectedContent = element.content.slice(from, to);
@@ -9122,6 +9356,8 @@
       var character;
       if (element.type() === 'Image') {
         return true;
+      } else if (element.isFixed() && element.tagName() === 'a') {
+        return true;
       } else {
         if (!element.content) {
           return false;
@@ -9142,6 +9378,8 @@
     Link.isApplied = function(element, selection) {
       if (element.type() === 'Image') {
         return element.a;
+      } else if (element.isFixed() && element.tagName() === 'a') {
+        return true;
       } else {
         return Link.__super__.constructor.isApplied.call(this, element, selection);
       }
@@ -9159,6 +9397,8 @@
       }
       applied = false;
       if (element.type() === 'Image') {
+        rect = element.domElement().getBoundingClientRect();
+      } else if (element.isFixed() && element.tagName() === 'a') {
         rect = element.domElement().getBoundingClientRect();
       } else {
         if (selection.isCollapsed()) {
@@ -9243,6 +9483,8 @@
           }
           element.unmount();
           element.mount();
+        } else if (element.isFixed() && element.tagName() === 'a') {
+          element.attr('href', detail.href);
         } else {
           element.content = element.content.unformat(from, to, 'a');
           if (detail.href) {
@@ -9944,7 +10186,12 @@
     Image.icon = 'image';
 
     Image.canApply = function(element, selection) {
-      return !element.isFixed();
+      if (element.isFixed()) {
+        if (element.type() !== 'ImageFixture') {
+          return false;
+        }
+      }
+      return true;
     };
 
     Image.apply = function(element, selection, callback) {
@@ -9986,10 +10233,14 @@
           imageAttrs.height = imageSize[1];
           imageAttrs.src = imageURL;
           imageAttrs.width = imageSize[0];
-          image = new ContentEdit.Image(imageAttrs);
-          _ref = _this._insertAt(element), node = _ref[0], index = _ref[1];
-          node.parent().attach(image, index);
-          image.focus();
+          if (element.type() === 'ImageFixture') {
+            element.src(imageURL);
+          } else {
+            image = new ContentEdit.Image(imageAttrs);
+            _ref = _this._insertAt(element), node = _ref[0], index = _ref[1];
+            node.parent().attach(image, index);
+            image.focus();
+          }
           modal.hide();
           dialog.hide();
           callback(true);
